@@ -368,3 +368,65 @@ def get_news_category_counts(conn):
                ORDER BY count DESC"""
         )
         return cur.fetchall()
+
+
+def get_unprocessed_articles(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT na.article_id, na.title, na.slug, na.summary
+               FROM news_articles na
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM article_chunks ac WHERE ac.article_id = na.article_id
+               )
+               ORDER BY na.posted_at DESC"""
+        )
+        cols = [desc[0] for desc in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def store_chunks(conn, chunks):
+    with conn.cursor() as cur:
+        for c in chunks:
+            cur.execute(
+                """INSERT INTO article_chunks
+                   (article_id, chunk_index, chunk_text, article_title, article_slug, embedding)
+                   VALUES (%s, %s, %s, %s, %s, %s::vector)
+                   ON CONFLICT (article_id, chunk_index) DO UPDATE SET
+                     chunk_text = EXCLUDED.chunk_text,
+                     embedding = EXCLUDED.embedding""",
+                (
+                    c["article_id"], c["chunk_index"], c["chunk_text"],
+                    c["article_title"], c["article_slug"],
+                    c["embedding"],
+                )
+            )
+    conn.commit()
+
+
+def vector_search(conn, query_embedding, top_k=5, threshold=0.75):
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT ac.id, ac.chunk_text, ac.article_title, ac.article_slug,
+                      ac.article_id, na.posted_at,
+                      1 - (ac.embedding <=> %s::vector) AS similarity
+               FROM article_chunks ac
+               JOIN news_articles na ON na.article_id = ac.article_id
+               WHERE 1 - (ac.embedding <=> %s::vector) >= %s
+               ORDER BY similarity DESC
+               LIMIT %s""",
+            (query_embedding, query_embedding, threshold, top_k)
+        )
+        cols = [desc[0] for desc in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def count_chunks(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM article_chunks")
+        return cur.fetchone()[0]
+
+
+def count_articles_embedded(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(DISTINCT article_id) FROM article_chunks")
+        return cur.fetchone()[0]

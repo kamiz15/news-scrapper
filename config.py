@@ -3,6 +3,13 @@ import os
 import re
 import urllib.parse
 
+from dotenv import load_dotenv
+load_dotenv()
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_CHAT_MODEL = "llama-3.3-70b-versatile"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
 API_BASE_URL = "https://backend.ansuinvest.com/api/web/v1"
 BASE_IMAGE_URL = "https://backend.ansuinvest.com/public/images/news/"
 
@@ -10,7 +17,7 @@ DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_PORT = int(os.environ.get("DB_PORT", "5432"))
 DB_NAME = os.environ.get("DB_NAME", "ansu_news")
 DB_USER = os.environ.get("DB_USER", "postgres")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "postgres")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "123")
 
 HYDRO_KEYWORDS = [
     "hydro", "hydropower", "hydro power", "jal vidyut",

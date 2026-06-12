@@ -15,7 +15,7 @@ st.set_page_config(
 
 from dashboard.views import (
     home, hydropower, research, companies, article_detail,
-    market_intel, news_trends, sector_compare,
+    market_intel, news_trends, sector_compare, chat,
 )
 
 
@@ -66,6 +66,7 @@ def main():
         "Hydro Companies": companies.show,
         "General News": home.show,
         "Expert Research": research.show,
+        "Chat": chat.show,
     }
 
     choice = st.sidebar.radio("Navigation", list(pages.keys()),

@@ -60,3 +60,17 @@ CREATE INDEX IF NOT EXISTS idx_news_hydro ON news_articles(is_hydro);
 CREATE INDEX IF NOT EXISTS idx_news_posted_at ON news_articles(posted_at);
 CREATE INDEX IF NOT EXISTS idx_research_hydro ON research_reports(is_hydro);
 CREATE INDEX IF NOT EXISTS idx_research_posted_at ON research_reports(posted_at);
+
+CREATE TABLE IF NOT EXISTS article_chunks (
+    id SERIAL PRIMARY KEY,
+    article_id VARCHAR(50) REFERENCES news_articles(article_id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    article_title TEXT,
+    article_slug VARCHAR(255),
+    embedding vector(384),
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(article_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_article_id ON article_chunks(article_id);

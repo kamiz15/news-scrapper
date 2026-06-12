@@ -172,6 +172,11 @@ def run_all(progress_callback=None):
         progress_callback("Scraping market data...", 90)
     scrape_market()
 
+    if progress_callback:
+        progress_callback("Generating embeddings for chatbot...", 95)
+    from scraper.ingest import ingest_all
+    ingest_all()
+
     msg = f"Scrape complete: {total_news} news, {total_research} research"
     if progress_callback:
         progress_callback(msg, 100)
