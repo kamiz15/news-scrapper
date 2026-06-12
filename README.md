@@ -169,4 +169,13 @@ Or double-click `Launch_Desktop.cmd` for the GUI launcher.
 
 - `requests` — HTTP client for API
 - `psycopg2-binary` — PostgreSQL driver
-- `streamlit` — Dashboard framew
+- `streamlit` — Dashboard framework
+- `plotly` — Interactive charts
+- `pandas` — Data manipulation
+- `pydantic` — Data models
+
+---
+
+## Logs
+
+All scraper output is written to `scraper.log` in the project root. View from the launcher ("View Logs" button) or open directly.

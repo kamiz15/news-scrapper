@@ -1,0 +1,8 @@
+[server]
+# Don't watch project files for changes — much faster on Windows.
+# (Restart the dashboard after code changes.)
+fileWatcherType = "none"
+headless = true
+
+[browser]
+gatherUsageStats = false

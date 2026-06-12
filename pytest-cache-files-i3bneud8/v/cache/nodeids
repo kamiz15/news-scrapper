@@ -1,0 +1,18 @@
+[
+  "tests/test_units.py::test_clean_html_br_to_newline",
+  "tests/test_units.py::test_clean_html_empty",
+  "tests/test_units.py::test_clean_html_strips_tags",
+  "tests/test_units.py::test_clean_html_unescapes_entities",
+  "tests/test_units.py::test_company_hydro_matches",
+  "tests/test_units.py::test_company_kathmandu_not_hydro",
+  "tests/test_units.py::test_empty_text",
+  "tests/test_units.py::test_hydro_keywords_match",
+  "tests/test_units.py::test_image_url_basic",
+  "tests/test_units.py::test_image_url_empty",
+  "tests/test_units.py::test_image_url_quotes_spaces",
+  "tests/test_units.py::test_kathmandu_is_not_hydro",
+  "tests/test_units.py::test_pagination_exact_multiple",
+  "tests/test_units.py::test_pagination_partial_last_page",
+  "tests/test_units.py::test_pagination_zero_and_small",
+  "tests/test_units.py::test_supper_is_not_hydro"
+]

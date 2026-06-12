@@ -28,6 +28,7 @@ def refresh_data():
     try:
         from scraper.runner import run_all
         run_all(progress_callback=callback)
+        st.cache_data.clear()
         st.sidebar.success("Data refreshed.")
     except Exception as e:
         st.sidebar.error(f"Refresh failed: {e}")
