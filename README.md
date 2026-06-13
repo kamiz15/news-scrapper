@@ -1,6 +1,6 @@
 # Ansu Invest Desktop App
 
-Desktop application for scraping, storing, and visualizing news and research data from [Ansu Invest](https://ansuinvest.com/research-opinion), with a dedicated hydropower sector dashboard.
+Desktop application for scraping, storing, and visualizing news and research data from [Ansu Invest](https://ansuinvest.com/research-opinion), with a dedicated hydropower sector dashboard, **RAG chatbot**, and **AI-powered insights**.
 
 ---
 
@@ -8,37 +8,43 @@ Desktop application for scraping, storing, and visualizing news and research dat
 
 ```
 news_scrapper/
-├── config.py              # API URLs, DB credentials, hydro keywords, utilities
-├── run.py                 # CLI entry point
-├── launcher.pyw           # Desktop GUI launcher (tkinter)
-├── Launch_Desktop.cmd     # One-click launcher shortcut
-├── requirements.txt       # Python dependencies
-├── scraper.log            # Auto-generated log file
+├── config.py                 # API URLs, DB creds, model names, hydro keywords, utilities
+├── run.py                    # CLI entry point (scrape / dashboard / all / desktop)
+├── launcher.pyw              # Desktop GUI launcher (tkinter)
+├── Launch_Desktop.cmd        # One-click launcher shortcut
+├── requirements.txt          # Python dependencies
+├── .env                      # GROQ_API_KEY + DB credentials (not tracked in git)
+├── scraper.log               # Auto-generated log file
 │
 ├── scraper/
-│   ├── api_client.py      # HTTP client for Ansu Invest backend API
-│   ├── runner.py          # Scrape orchestrator with pagination
-│   ├── hydro_filter.py    # Keyword + sector matching for hydropower content
-│   └── models.py          # Pydantic data models
+│   ├── api_client.py         # HTTP client for Ansu Invest backend API
+│   ├── runner.py             # Scrape orchestrator with full pagination
+│   ├── hydro_filter.py       # Keyword + sector matching for hydropower content
+│   ├── ingest.py             # Article chunking + embedding generation for RAG
+│   └── models.py             # Pydantic data models
 │
 ├── database/
-│   ├── schema.sql         # PostgreSQL table definitions
-│   ├── connection.py      # Connection pool management
-│   └── repository.py      # All insert/query functions
+│   ├── schema.sql            # PostgreSQL table definitions (with vector(384) support)
+│   ├── connection.py         # Threaded connection pool management
+│   └── repository.py         # All insert/query + vector search functions
 │
 └── dashboard/
-    ├── app.py             # Streamlit main app with sidebar navigation
+    ├── app.py                # Streamlit main app with sidebar navigation
+    ├── ai_insights.py        # Groq-powered: market brief, news impact, sector pulse
+    ├── chat_engine.py        # RAG chatbot: embedding query + vector search + LLM answer
+    ├── data.py               # Cached data access layer (st.cache_data)
     ├── components/
-    │   └── charts.py      # Plotly chart functions
+    │   └── charts.py         # Plotly chart functions (9 chart types)
     └── views/
-        ├── home.py             # General News with category filter + pagination
-        ├── hydropower.py       # Hydropower Dashboard with charts
-        ├── market_intel.py     # Hydro market intelligence (movers, volume, prices)
-        ├── news_trends.py      # Hydro news coverage trends + top terms
-        ├── sector_compare.py   # Hydro vs other sectors performance
-        ├── research.py         # Expert Research with tabs + pagination
-        ├── companies.py        # Hydropower companies list + market data
-        └── article_detail.py   # Full article/report detail view
+        ├── home.py              # General News with category filter + pagination
+        ├── hydropower.py        # Hydropower Dashboard with charts + AI insights
+        ├── market_intel.py      # Hydro market intelligence (movers, volume, prices)
+        ├── news_trends.py       # Hydro news coverage trends + top title terms
+        ├── sector_compare.py    # Hydro vs other sectors performance comparison
+        ├── research.py          # Expert Research with tabs + pagination
+        ├── companies.py         # Hydropower companies list + market data
+        ├── article_detail.py    # Full article/report detail view
+        └── chat.py              # Chat UI with conversation history + sources
 ```
 
 ---
@@ -59,21 +65,72 @@ news_scrapper/
 
 ---
 
-## Database (PostgreSQL)
+## Database (PostgreSQL + pgvector)
 
-**Database name:** `ansu_news`
+**Requires:** PostgreSQL 16+ with [pgvector](https://github.com/pgvector/pgvector) extension.
+
+```sql
+CREATE DATABASE ansu_news;
+\c ansu_news
+CREATE EXTENSION vector;
+```
 
 ### Tables
 
 | Table | Rows | Description |
 |---|---|---|
-| `news_articles` | ~1,000 unique | News articles with category, date, hydro flag |
+| `news_articles` | ~2,191 | News articles with category, date, hydro flag |
 | `research_reports` | ~793 | Expert research with premium flag |
 | `companies` | ~393 | Listed companies with sector classification |
 | `market_data` | Time-series | Stock market indicators per company |
 | `categories` | 4 | News categories |
+| `article_chunks` | ~7,500 | Chunked article text with 384-dim vector embeddings |
 
 Each article/report has an `is_hydro` boolean flag set by keyword + sector matching.
+
+### Vector Search (RAG)
+
+The `article_chunks` table stores article text split into 500-char chunks (50-char overlap) with embeddings generated by `all-MiniLM-L6-v2`. Cosine similarity search uses the pgvector `<=>` operator:
+
+```sql
+SELECT 1 - (embedding <=> %s::vector) AS similarity
+FROM article_chunks
+WHERE 1 - (embedding <=> %s::vector) >= 0.35
+ORDER BY similarity DESC
+LIMIT 5
+```
+
+---
+
+## RAG Chatbot
+
+### Pipeline
+
+1. **Ingestion** (`scraper/ingest.py`): Unprocessed articles are chunked, embedded via SentenceTransformer, and stored in `article_chunks` — runs automatically at the end of every scrape.
+2. **Retrieval** (`dashboard/chat_engine.py:retrieve`): User query is embedded with the same model, then cosine similarity search finds the top-5 most relevant chunks above a 0.35 threshold.
+3. **Generation** (`dashboard/chat_engine.py:generate_answer`): Retrieved chunks + user query are sent to Groq (`llama-3.3-70b-versatile`) which answers strictly from the provided context with source citations.
+
+### Tech Stack
+- **Embedding model:** `all-MiniLM-L6-v2` (384-dim, SentenceTransformers)
+- **Vector store:** PostgreSQL + pgvector (cosine distance `<=>`)
+- **LLM:** Groq API (`llama-3.3-70b-versatile`)
+- **Chunking:** 500 chars per chunk, 50 char overlap
+
+---
+
+## AI-Powered Dashboard Insights
+
+The dashboard uses Groq to generate real-time natural language analysis from scraped data:
+
+### `dashboard/ai_insights.py`
+
+| Function | Trigger | Caching | What it does |
+|---|---|---|---|
+| `market_brief(market_df)` | Auto-loads on page visit | `st.cache_data` / 1hr | 2-3 sentence market summary: gainers/losers count, biggest mover, sector avg change, volume leader |
+| `news_impact_analysis(news_df, market_df)` | Button click | None | 1-paragraph analysis connecting recent news themes to market movements |
+| `sector_pulse(news_df)` | Expander open | None | Sentiment gauge (🟢🟡🔴), 3-5 key themes detected, recommended article links |
+
+All functions use the Groq `llama-3.3-70b-versatile` model with low temperature for factual consistency.
 
 ---
 
@@ -82,7 +139,7 @@ Each article/report has an `is_hydro` boolean flag set by keyword + sector match
 Two methods combined:
 
 1. **Keyword matching** on title + summary:
-   `hydro`, `hydropower`, `jal vidyut`, `power plant`, `energy`, `dam`, `reservoir`, `run-of-river`, `sanigad`, `mandu`, etc.
+   `hydro`, `hydropower`, `jal vidyut`, `power plant`, `energy`, `dam`, `reservoir`, `run-of-river`, `sanigad`, `mandu`, `upper`, `middle`, `lower`, `khola`, `nadi`, `khani`, `koshi`
 
 2. **Company sector lookup**: companies in energy/power sectors are marked as hydro.
 
@@ -92,35 +149,61 @@ Two methods combined:
 
 **File:** `Launch_Desktop.cmd` (double-click to run)
 
-- **Fetch All Data** — scrapes all news (pagination through all pages), all research, companies, market data. Shows progress bar.
-- **Open Dashboard** — launches Streamlit dashboard in browser. Kills stale Streamlit processes first.
+- **Fetch All Data** — scrapes all news (paginated through all pages), all research, companies, market data, then generates embeddings. Shows progress bar.
+- **Open Dashboard** — launches Streamlit dashboard in browser. Kills stale Streamlit processes first, frees port 8501.
 - **View Logs** — opens `scraper.log` in Notepad.
 
 ---
 
 ## Dashboard Pages
 
+### Hydropower Dashboard (Landing)
+- KPI metrics (news count, reports, companies)
+- **AI Market Brief** — auto-generated market summary
+- Market snapshot bar chart (Plotly, colored by % change)
+- News timeline + research topics charts
+- **"Analyze News Impact on Market"** button
+- **Sector Pulse** — sentiment, themes, recommended reads
+- Latest hydropower news with "Read" buttons
+- Hydropower companies table
+
+### Market Intelligence
+- Gainers/losers KPI cards
+- Top movers horizontal bar chart (best/worst)
+- Volume leaders bar chart
+- Full hydro market data table (LTP, change, volume)
+
+### News Trends
+- Monthly news trend line chart
+- Top title terms frequency bar chart (with stopword filtering)
+- Latest hydropower headlines
+
+### Sector Comparison
+- Sector performance horizontal bar chart (avg % change)
+- Sector volume bar chart
+- Full sector table with company count, avg % change, total volume
+- Hydro sector average calculated in Python
+
 ### General News
 - Category filter buttons (Markets, Stocks, etc.)
-- Paginated article feed with images and previews
+- Paginated article feed (15/page) with images and previews
 - "Read More" button opens full article in-app
 
 ### Expert Research
 - Tabbed view: All Research / Hydropower Only
-- Premium reports flagged with star
+- Premium reports flagged with ⭐ badge
+- Paginated with Previous/Next navigation
 - "Read Report" opens full report detail
 
-### Hydropower Dashboard
-- KPI metrics (news count, reports, companies)
-- Market snapshot bar chart (Plotly)
-- News timeline bar chart
-- Research topics pie chart
-- Latest hydropower news with "Read" buttons
-- Hydropower companies table
-
 ### Hydro Companies
-- Full list of 117 hydropower companies
-- Latest market data table (LTP, change, volume)
+- Full list of hydropower companies
+- Latest market data table (LTP, change, % change, volume)
+
+### Chat (RAG)
+- Conversational Q&A over scraped articles
+- Responds with source citations
+- "What can I ask?" help expander with examples
+- Clear conversation button
 
 ### Article/Report Detail
 - Title, subtitle, image, date, category
@@ -131,21 +214,53 @@ Two methods combined:
 
 ## Installation
 
+### Prerequisites
+
 1. Install [PostgreSQL 16+](https://www.postgresql.org/download/)
-2. Create the database:
+2. Install the [pgvector](https://github.com/pgvector/pgvector) extension:
+   ```powershell
+   git clone https://github.com/pgvector/pgvector.git
+   cd pgvector
+   set PATH=C:\Program Files\PostgreSQL\16\bin;%PATH%
+   mingw32-make
+   mingw32-make install
+   ```
+3. Create the database and enable the extension:
    ```sql
    CREATE DATABASE ansu_news;
+   \c ansu_news
+   CREATE EXTENSION vector;
    ```
-3. Install Python dependencies:
+
+### Application Setup
+
+1. Clone the repository:
+   ```powershell
+   git clone https://github.com/kamiz15/news-scrapper.git
+   cd news-scrapper
+   ```
+
+2. Install Python dependencies:
    ```powershell
    pip install -r requirements.txt
    ```
-4. Set PostgreSQL password in `config.py` if different from `postgres`
-5. Run the scraper:
+
+3. Create `.env` file in the project root:
+   ```env
+   GROQ_API_KEY=gsk_your_api_key_here
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=ansu_news
+   DB_USER=postgres
+   DB_PASSWORD=your_password
+   ```
+
+4. Run the full scrape to populate the database:
    ```powershell
    python run.py scrape
    ```
-6. Launch dashboard:
+
+5. Launch the dashboard:
    ```powershell
    python run.py dashboard
    ```
@@ -155,10 +270,10 @@ Two methods combined:
 ## Usage
 
 ```powershell
-python run.py scrape      # Fetch all data
-python run.py dashboard   # Launch dashboard
-python run.py all         # Scrape + dashboard
-python run.py desktop     # Launch tkinter desktop app
+python run.py scrape      # Fetch all data + generate embeddings
+python run.py dashboard   # Launch Streamlit dashboard
+python run.py all         # Scrape then launch dashboard
+python run.py desktop     # Launch tkinter desktop launcher
 ```
 
 Or double-click `Launch_Desktop.cmd` for the GUI launcher.
@@ -167,12 +282,44 @@ Or double-click `Launch_Desktop.cmd` for the GUI launcher.
 
 ## Dependencies
 
-- `requests` — HTTP client for API
-- `psycopg2-binary` — PostgreSQL driver
-- `streamlit` — Dashboard framework
-- `plotly` — Interactive charts
-- `pandas` — Data manipulation
-- `pydantic` — Data models
+| Package | Version | Purpose |
+|---|---|---|
+| `requests` | — | HTTP client for API |
+| `psycopg2-binary` | — | PostgreSQL driver |
+| `streamlit` | — | Dashboard framework |
+| `plotly` | — | Interactive charts |
+| `pandas` | — | Data manipulation |
+| `pydantic` | — | Data models |
+| `sentence-transformers` | — | Embedding model (all-MiniLM-L6-v2) |
+| `groq` | ≥0.18.0 | Groq LLM API client |
+| `python-dotenv` | — | Environment variable loading |
+| `numpy` | — | Numerical operations for embeddings |
+
+---
+
+## Configuration
+
+### `config.py`
+
+| Setting | Default | Description |
+|---|---|---|
+| `GROQ_API_KEY` | `""` (from `.env`) | Groq API key for LLM + insights |
+| `GROQ_CHAT_MODEL` | `llama-3.3-70b-versatile` | Model used by chatbot + insights |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer for vectors |
+| `DB_HOST` | `localhost` | PostgreSQL host |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `ansu_news` | Database name |
+| `DB_USER` | `postgres` | Database user |
+| `DB_PASSWORD` | `123` (from `.env`) | Database password |
+| `API_BASE_URL` | `https://backend.ansuinvest.com/api/web/v1` | Ansu Invest API |
+| `HYDRO_KEYWORDS` | List of 20+ | Keywords for hydropower detection |
+
+### `dashboard/chat_engine.py`
+
+| Setting | Default | Description |
+|---|---|---|
+| `TOP_K` | `5` | Number of chunks to retrieve |
+| `SIMILARITY_THRESHOLD` | `0.35` | Minimum cosine similarity for retrieval |
 
 ---
 
